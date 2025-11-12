@@ -2,14 +2,14 @@ const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
 const app = express();
 
-const TOKEN = process.env.TOKEN;      // We'll set this on Render
+const TOKEN = process.env.TOKEN;       // Set in Render
 const CHANNEL_ID = process.env.CHANNEL_ID;
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent   // must match enabled intent
     ]
 });
 
@@ -18,33 +18,37 @@ client.once('ready', () => {
 });
 
 app.get('/', async (req, res) => {
-    const channel = await client.channels.fetch(CHANNEL_ID);
-    let messages = [];
-    let lastId;
+    try {
+        const channel = await client.channels.fetch(CHANNEL_ID);
+        let messages = [];
+        let lastId;
 
-    while (true) {
-        const options = { limit: 100 };
-        if (lastId) options.before = lastId;
+        while (true) {
+            const options = { limit: 100 };
+            if (lastId) options.before = lastId;
 
-        const fetched = await channel.messages.fetch(options);
-        if (fetched.size === 0) break;
+            const fetched = await channel.messages.fetch(options);
+            if (fetched.size === 0) break;
 
-        messages.push(...fetched.map(msg => ({
-            author: msg.author.username,
-            content: msg.content,
-            timestamp: msg.createdAt
-        })));
+            messages.push(...fetched.map(msg => ({
+                author: msg.author.username,
+                content: msg.content,
+                timestamp: msg.createdAt
+            })));
 
-        lastId = fetched.last().id;
+            lastId = fetched.last().id;
+        }
+
+        let html = `<h1>Chat Log</h1><div>`;
+        messages.reverse().forEach(msg => {
+            html += `<p><strong>${msg.author}</strong> [${msg.timestamp.toLocaleString()}]: ${msg.content}</p>`;
+        });
+        html += `</div>`;
+
+        res.send(html);
+    } catch (err) {
+        res.send(`<p>Error fetching channel: ${err.message}</p>`);
     }
-
-    let html = `<h1>Chat Log</h1><div>`;
-    messages.reverse().forEach(msg => {
-        html += `<p><strong>${msg.author}</strong> [${msg.timestamp.toLocaleString()}]: ${msg.content}</p>`;
-    });
-    html += `</div>`;
-
-    res.send(html);
 });
 
 const PORT = process.env.PORT || 3000;
