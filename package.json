@@ -1,16 +1,21 @@
 {
-  "name": "discord-chat-render",
+  "name": "discord-chatlog-viewer",
   "version": "1.0.0",
+  "description": "Discord bot with chat logging API + frontend viewer",
   "main": "index.js",
-  "license": "MIT",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "express": "^4.18.2",
-    "axios": "^1.6.7",
-    "body-parser": "^1.20.2",
-    "colorthief": "^2.3.2"
+    "discord.js": "^14.15.3",
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "body-parser": "^1.20.3",
+    "axios": "^1.7.2",
+    "ws": "^8.17.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
   }
 }
