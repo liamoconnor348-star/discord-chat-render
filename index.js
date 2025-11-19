@@ -1,4 +1,4 @@
-// index.js — Full Discord Chat Viewer with role emojis
+// index.js — Full Discord Chat Viewer for Render
 
 const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
@@ -69,7 +69,7 @@ function getCachedColor(key) {
 
 // Map roles to emojis
 const roleEmojiMap = {
-  "YourRoleName": "👑", // Replace with your role name
+  "YourRoleName": "👑", // Replace with your Discord role name
   "Admin": "⭐",
   "Moderator": "🔹",
   "Member": "🔸"
@@ -82,8 +82,12 @@ app.post('/delete', async (req, res) => {
   try {
     const channel = await client.channels.fetch(CHANNEL_ID);
     if (!channel) return res.send('❌ Invalid CHANNEL_ID');
-    await channel.messages.delete(messageId);
-    res.redirect('back');
+    try {
+      await channel.messages.delete(messageId);
+      res.redirect('back');
+    } catch(err) {
+      res.send(`<p>Cannot delete message: ${escapeHtml(err.message)}</p>`);
+    }
   } catch (err) {
     console.error('Delete error', err);
     res.send(`<p>Error deleting message: ${escapeHtml(err.message)}</p>`);
@@ -108,24 +112,27 @@ async function renderMessageBlock(msg) {
       if (roleColor === '#000000') roleColor = '#ffffff';
       roleEmoji = roleEmojiMap[roleName] || '';
     }
-  } catch (e) { roleColor = '#ffffff'; roleEmoji = ''; }
+  } catch (e) {
+    roleColor = '#ffffff';
+    roleEmoji = '';
+  }
 
   const isMe = msg.author.id === client.user.id;
   const indentPx = (msg.reference && msg.reference.messageId) ? 40 : 0;
 
-  const attachmentsHtml = (() => {
-    if (!msg.attachments || msg.attachments.size === 0) return '';
-    let out = '';
-    msg.attachments.forEach(att => {
-      const contentType = att.contentType || '';
-      if (contentType.startsWith && contentType.startsWith('image')) {
-        out += `<img class="inline-img" src="${att.url}" />`;
-      } else {
-        out += `<div><a href="${escapeHtml(att.url)}" target="_blank">Attachment</a></div>`;
-      }
-    });
-    return out;
-  })();
+  let attachmentsHtml = '';
+  try {
+    if (msg.attachments && msg.attachments.size > 0) {
+      msg.attachments.forEach(att => {
+        const contentType = att.contentType || '';
+        if (contentType.startsWith && contentType.startsWith('image')) {
+          attachmentsHtml += `<img class="inline-img" src="${att.url}" />`;
+        } else {
+          attachmentsHtml += `<div><a href="${escapeHtml(att.url)}" target="_blank">Attachment</a></div>`;
+        }
+      });
+    }
+  } catch(e){}
 
   const contentEscaped = escapeHtml(msg.content || '');
 
@@ -149,7 +156,7 @@ async function renderMessageBlock(msg) {
   `;
 }
 
-// Main page: newest 50 messages
+// Main page
 app.get('/', async (req, res) => {
   try {
     const channel = await client.channels.fetch(CHANNEL_ID);
@@ -241,7 +248,7 @@ try{
 const res=await fetch('/load?before='+oldest+'&limit=50');
 if(!res.ok){loader.innerText='No more messages.';loading=false;return;}
 const html=await res.text();
-if(!html.trim()){loader.innerText='No more messages.';document.body.removeAttribute('data-oldest');loading=false;return;}
+if(!html.trim()){loader.innerText='No more messages';document.body.removeAttribute('data-oldest');loading=false;return;}
 const chat=document.getElementById('chat');
 chat.insertAdjacentHTML('afterbegin',html);
 const firstMsg=chat.querySelector('.message');
@@ -272,8 +279,8 @@ const channel = await client.channels.fetch(CHANNEL_ID);
 if(!channel) return res.send('');
 const fetched = await channel.messages.fetch({limit:50});
 const messages = Array.from(fetched.values()).reverse();
-let blocks = '';
-for(const m of messages) blocks += await renderMessageBlock(m);
+let blocks='';
+for(const m of messages) blocks+=await renderMessageBlock(m);
 res.send(blocks);
 }catch(err){console.error('Refresh error',err);res.status(500).send('');}
 });
