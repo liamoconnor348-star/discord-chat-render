@@ -1,4 +1,4 @@
-// index.js — Discord Chat Viewer with proper try/catch everywhere
+// index.js — Discord Chat Viewer with modern bubbles
 
 const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
@@ -50,7 +50,7 @@ function escapeHtml(s) {
     .replaceAll("'", '&#39;');
 }
 
-// Deterministic color generator
+// Generate color from string (deterministic)
 function colorFromString(str) {
   try {
     let hash = 5381;
@@ -77,7 +77,7 @@ function getCachedColor(key) {
 
 // Map roles to emojis
 const roleEmojiMap = {
-  "YourRoleName": "👑", // Replace with your role
+  "👑": "👑", // Replace with your role
   "Admin": "⭐",
   "Moderator": "🔹",
   "Member": "🔸"
@@ -197,15 +197,19 @@ app.get('/', async (req, res) => {
 <title>Discord Chat Viewer</title>
 <meta http-equiv="refresh" content="10">
 <style>
-/* Minimal CSS for bubbles, avatars, dark/light theme */
-:root{--bg:#111;--text:#fff;--bubble-text:#fff;}
-.light{--bg:#f2f2f2;--text:#000;--bubble-text:#000;}
-body{margin:0;padding:20px;font-family:Arial;background:var(--bg);color:var(--text);}
-.avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;}
-.bubble{padding:10px 14px;border-radius:14px;max-width:70%;color:var(--bubble-text);box-shadow:0 2px 6px rgba(0,0,0,0.4);}
-.meta{font-size:12px;margin-bottom:6px;opacity:0.95;}
-.inline-img{max-width:360px;border-radius:10px;margin-top:8px;display:block;}
-.delete-btn{background:#c44;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;}
+body {font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; background:#121212; color:#fff; padding:20px; transition:0.3s;}
+.light {background:#f2f2f2; color:#000;}
+h1 {margin-bottom:20px;}
+#chat {display:flex; flex-direction:column; gap:12px;}
+.message {display:flex; align-items:flex-start; gap:10px;}
+.avatar {width:40px;height:40px;border-radius:50%; object-fit:cover;}
+.bubble {padding:10px 16px;border-radius:20px; max-width:75%; background:#1f1f1f; position:relative; word-break:break-word; box-shadow:0 2px 6px rgba(0,0,0,0.5); transition: transform 0.1s;}
+.bubble:hover {transform: scale(1.02);}
+.meta {font-size:12px; opacity:0.8; margin-bottom:6px;}
+.inline-img {max-width:300px;border-radius:10px;margin-top:6px;display:block;}
+.delete-form {display:flex; align-items:center; margin-left:6px;}
+.delete-btn {background:#e74c3c;border:none;color:white;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer; transition:0.2s;}
+.delete-btn:hover {background:#c0392b;}
 </style>
 </head>
 <body data-oldest="${oldestId}">
