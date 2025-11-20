@@ -1,18 +1,14 @@
-// index.js — Fully safe Discord Chat Viewer
-const { Client, GatewayIntentBits } = require('discord.js');
-const express = require('express');
-const bodyParser = require('body-parser');
-const cors = require('cors');
-
-const app = express();
-app.use(cors());
-app.use(bodyParser.urlencoded({ extended: true }));
+const { Client, GatewayIntentBits } = require("discord.js");
+const express = require("express");
+const bodyParser = require("body-parser");
+const cors = require("cors");
+require("dotenv").config();
 
 const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 
 if (!TOKEN || !CHANNEL_ID) {
-  console.error('Please set TOKEN and CHANNEL_ID environment variables.');
+  console.error("Please set TOKEN and CHANNEL_ID environment variables.");
   process.exit(1);
 }
 
@@ -26,29 +22,30 @@ const client = new Client({
   ]
 });
 
-// Escape any HTML or special characters in messages
+const app = express();
+app.use(cors());
+app.use(bodyParser.urlencoded({ extended: true }));
+
 function escapeHtml(text) {
   return String(text || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-    .replace(/`/g, '&#96;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function formatTime(date) {
-  try {
-    return new Date(date).toLocaleString('en-US', {
-      weekday: 'short', month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit'
-    });
-  } catch {
-    return 'Invalid Date';
-  }
+  return new Date(date).toLocaleString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
 }
 
-// Deterministic bubble color per user
 function getUserBubbleColor(userId) {
   let hash = 0;
   for (let i = 0; i < userId.length; i++) {
@@ -62,22 +59,22 @@ function getUserBubbleColor(userId) {
 }
 
 // Delete message
-app.post('/delete', async (req, res) => {
+app.post("/delete", async (req, res) => {
   const messageId = req.body.messageId;
-  if (!messageId) return res.status(400).send('messageId required');
+  if (!messageId) return res.status(400).send("messageId required");
   try {
     const channel = await client.channels.fetch(CHANNEL_ID);
     await channel.messages.delete(messageId);
-    res.redirect('back');
+    res.redirect("back");
   } catch (err) {
     res.send(`<p>Error deleting: ${escapeHtml(err.message)}</p>`);
   }
 });
 
 // React to message
-app.post('/react', async (req, res) => {
+app.post("/react", async (req, res) => {
   const { messageId, emoji } = req.body;
-  if (!messageId || !emoji) return res.status(400).send('Missing messageId or emoji');
+  if (!messageId || !emoji) return res.status(400).send("Missing messageId or emoji");
 
   try {
     const channel = await client.channels.fetch(CHANNEL_ID);
@@ -88,106 +85,101 @@ app.post('/react', async (req, res) => {
     } else {
       await message.react(emoji);
     }
-    res.redirect('back');
+    res.redirect("back");
   } catch (err) {
     res.status(500).send(escapeHtml(err.message));
   }
 });
 
-// Render a single message
+// Render message
 async function renderMessageBlock(msg) {
   try {
-    const avatar = msg.author.displayAvatarURL({ extension: 'png', size: 128 }) || '';
+    const avatar = msg.author.displayAvatarURL({ extension: "png", size: 128 }) || "";
     const bubbleColor = getUserBubbleColor(msg.author.id);
     const grad = `linear-gradient(135deg, ${bubbleColor}CC, rgba(0,0,0,0.55))`;
-    const authorName = escapeHtml(msg.author.username || 'Unknown');
+    const authorName = escapeHtml(msg.author.username || "Unknown");
 
-    // Role emoji
-    let roleEmoji = '⬤';
-    let roleColor = '#ffffff';
+    let roleEmoji = "⬤";
+    let roleColor = "#ffffff";
     try {
       const member = msg.member || await msg.guild.members.fetch(msg.author.id);
       if (member && member.roles && member.roles.highest) {
-        roleColor = member.roles.highest.hexColor || '#ffffff';
-        if (roleColor === '#000000') roleColor = '#ffffff';
+        roleColor = member.roles.highest.hexColor || "#ffffff";
+        if (roleColor === "#000000") roleColor = "#ffffff";
         const emojiMap = { "Owner":"👑", "Admin":"⭐", "Moderator":"🔹" };
-        roleEmoji = emojiMap[member.roles.highest.name] || '⬤';
+        roleEmoji = emojiMap[member.roles.highest.name] || "⬤";
       }
     } catch {}
 
-    // Reply preview
-    let replyPreview = '';
+    let replyPreview = "";
     if (msg.reference && msg.reference.messageId) {
       try {
         const parentMsg = await msg.channel.messages.fetch(msg.reference.messageId);
         if (parentMsg) {
           const parentAvatar = parentMsg.author.displayAvatarURL({ extension:'png', size:32 });
-          const preview = escapeHtml(parentMsg.content || '[Embed/Attachment]');
+          const preview = escapeHtml(parentMsg.content || "[Embed/Attachment]");
           replyPreview = `<div class="reply-preview"><img src="${parentAvatar}" />↪ ${preview}</div>`;
         }
       } catch {}
     }
 
-    // Attachments
-    let attachmentsHtml = '';
+    let attachmentsHtml = "";
     if (msg.attachments && msg.attachments.size > 0) {
       msg.attachments.forEach(att => {
-        const contentType = att.contentType || '';
-        if (contentType.startsWith && contentType.startsWith('image')) {
-          attachmentsHtml += `<img class="inline-img" src="${att.url}" title="${escapeHtml(att.name || '')}" />`;
+        const contentType = att.contentType || "";
+        if (contentType.startsWith && contentType.startsWith("image")) {
+          attachmentsHtml += `<img class="inline-img" src="${att.url}" title="${escapeHtml(att.name || "")}" />`;
         } else {
-          attachmentsHtml += `<div><a href="${att.url}" target="_blank">${escapeHtml(att.name || 'Attachment')}</a></div>`;
+          attachmentsHtml += `<div><a href="${att.url}" target="_blank">${escapeHtml(att.name || "Attachment")}</a></div>`;
         }
       });
     }
 
-    // Reactions
-    let reactionsHtml = '';
+    let reactionsHtml = "";
     if (msg.reactions.cache.size > 0) {
-      reactionsHtml = '<div class="reactions">';
+      reactionsHtml = "<div class='reactions'>";
       msg.reactions.cache.forEach(r => {
-        reactionsHtml += `<span class="reaction" data-message-id="${msg.id}" data-emoji="${escapeHtml(r.emoji.name)}">${escapeHtml(r.emoji.name)} ${r.count}</span>`;
+        reactionsHtml += `<span class='reaction' data-message-id='${msg.id}' data-emoji='${escapeHtml(r.emoji.name)}'>${escapeHtml(r.emoji.name)} ${r.count}</span>`;
       });
-      reactionsHtml += '</div>';
+      reactionsHtml += "</div>";
     }
 
-    const contentEscaped = escapeHtml(msg.content || '');
-
+    const contentEscaped = escapeHtml(msg.content || "");
     const indentPx = msg.reference && msg.reference.messageId ? 50 : 0;
 
-    return `<div class="message" data-id="${msg.id}" style="margin-left:${indentPx}px">
-      <img class="avatar" src="${avatar}" />
+    return `<div class='message' data-id='${msg.id}' style='margin-left:${indentPx}px'>
+      <img class='avatar' src='${avatar}' />
       <div>
-        <div class="bubble" style="background:${grad}">
+        <div class='bubble' style='background:${grad}'>
           ${replyPreview}
-          <div class="meta">
-            <b style="color:${roleColor}">${authorName}</b> ${roleEmoji} • ${formatTime(msg.createdAt)}
+          <div class='meta'>
+            <b style='color:${roleColor}'>${authorName}</b> ${roleEmoji} • ${formatTime(msg.createdAt)}
           </div>
-          <div class="text">${contentEscaped}</div>
+          <div class='text'>${contentEscaped}</div>
           ${attachmentsHtml}
           ${reactionsHtml}
         </div>
       </div>
-      <form method="POST" action="/delete">
-        <input type="hidden" name="messageId" value="${msg.id}" />
-        <button class="delete-btn" type="submit">Delete</button>
+      <form method='POST' action='/delete'>
+        <input type='hidden' name='messageId' value='${msg.id}' />
+        <button class='delete-btn' type='submit'>Delete</button>
       </form>
     </div>`;
   } catch {
-    return '';
+    return "";
   }
 }
 
 // Main page
-app.get('/', async (req, res) => {
+app.get("/", async (req, res) => {
   try {
     const channel = await client.channels.fetch(CHANNEL_ID);
     let messages = await channel.messages.fetch({ limit: 50 });
     messages = Array.from(messages.values()).reverse();
 
-    const searchRaw = req.query.search || '';
+    const searchRaw = req.query.search || "";
     const search = String(searchRaw).toLowerCase();
-    if (search) messages = messages.filter(m => (m.content || '').toLowerCase().includes(search));
+    if (search) messages = messages.filter(m => (m.content || "").toLowerCase().includes(search));
 
     const blocks = await Promise.all(messages.map(m => renderMessageBlock(m)));
 
@@ -240,7 +232,6 @@ window.onload=()=>{window.scrollTo(0,document.body.scrollHeight);}
   }
 });
 
-// Start server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT,()=>console.log('Server running on port',PORT));
-client.login(TOKEN).catch(err=>{console.error('Discord login failed:',err); process.exit(1);});
+app.listen(PORT,()=>console.log("Server running on port",PORT));
+client.login(TOKEN).catch(err=>{console.error("Discord login failed:",err); process.exit(1);});
