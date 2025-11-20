@@ -1,4 +1,4 @@
-// index.js — Discord Chat Viewer (Pixel-Perfect + Reactions + Hover Preview)
+// index.js — Discord Chat Viewer (Fully Integrated + Clickable Reactions)
 
 const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
@@ -23,7 +23,8 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.MessageReactions
   ]
 });
 
@@ -85,6 +86,31 @@ app.post('/delete', async (req, res) => {
   }
 });
 
+// Add/remove reaction
+app.post('/react', async (req, res) => {
+  const { messageId, emoji } = req.body;
+  if (!messageId || !emoji) return res.status(400).send('Missing messageId or emoji');
+
+  try {
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    if (!channel) return res.status(400).send('Invalid channel');
+
+    const message = await channel.messages.fetch(messageId);
+    if (!message) return res.status(404).send('Message not found');
+
+    const existing = message.reactions.cache.get(emoji);
+    if (existing && existing.me) {
+      await existing.users.remove(client.user.id);
+    } else {
+      await message.react(emoji);
+    }
+
+    res.redirect('back');
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
 // Render message block
 async function renderMessageBlock(msg) {
   try {
@@ -139,7 +165,7 @@ async function renderMessageBlock(msg) {
     if (msg.reactions.cache.size > 0) {
       reactionsHtml = '<div class="reactions">';
       msg.reactions.cache.forEach(r => {
-        reactionsHtml += `<span class="reaction">${escapeHtml(r.emoji.name)} ${r.count}</span>`;
+        reactionsHtml += `<span class="reaction" data-message-id="${msg.id}" data-emoji="${escapeHtml(r.emoji.name)}">${escapeHtml(r.emoji.name)} ${r.count}</span>`;
       });
       reactionsHtml += '</div>';
     }
@@ -210,7 +236,7 @@ h1{margin-bottom:20px;font-weight:500;}
 .inline-img{max-width:280px;border-radius:8px;margin-top:4px;display:block;cursor:zoom-in;transition:transform 0.2s;}
 .inline-img:hover{transform:scale(1.05);}
 .reactions{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;}
-.reaction{background:rgba(255,255,255,0.1);color:#fff;padding:2px 6px;border-radius:12px;font-size:11px;cursor:default;transition:background 0.2s;}
+.reaction{background:rgba(255,255,255,0.1);color:#fff;padding:2px 6px;border-radius:12px;font-size:11px;cursor:pointer;transition:background 0.2s;}
 .reaction:hover{background:rgba(255,255,255,0.2);}
 .delete-form{display:flex;align-items:center;margin-left:4px;opacity:0;transition:opacity 0.2s;}
 .message:hover .delete-form{opacity:1;}
@@ -246,6 +272,23 @@ async function fetchNewMessages(){if(!lastMessageId)return;const res=await fetch
 setInterval(fetchNewMessages,5000);
 function downloadChat(){window.location.href='/download';}
 function toggleTheme(){document.body.classList.toggle('light');}
+
+// Clickable reactions
+document.addEventListener('click', async (e) => {
+  if(e.target.classList.contains('reaction')){
+    const msgId = e.target.dataset.messageId;
+    const emoji = e.target.dataset.emoji;
+    try {
+      await fetch('/react', {
+        method:'POST',
+        headers: {'Content-Type':'application/x-www-form-urlencoded'},
+        body: `messageId=${encodeURIComponent(msgId)}&emoji=${encodeURIComponent(emoji)}`
+      });
+      // Optional: increment/decrement count visually
+    } catch(err){console.error(err);}
+  }
+});
+
 window.onload=()=>{smoothScrollToBottom();};
 </script>
 </body>
@@ -254,7 +297,7 @@ window.onload=()=>{smoothScrollToBottom();};
   } catch (err) { res.send(`<p>Error: ${escapeHtml(err.message)}</p>`); }
 });
 
-// Messages API
+// Messages API for infinite scroll
 app.get('/messages', async (req, res) => {
   const beforeId = req.query.before;
   const afterId = req.query.after;
