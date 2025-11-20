@@ -1,7 +1,7 @@
 {
   "name": "discord-chat-render",
   "version": "1.0.0",
-  "description": "Discord chat viewer with avatars, role emojis, delete buttons, and download feature.",
+  "description": "Discord chat viewer with avatars, role emojis, delete buttons, reactions, infinite scroll, and download feature.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
