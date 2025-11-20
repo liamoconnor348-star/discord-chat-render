@@ -1,5 +1,4 @@
-// index.js — Discord Chat Viewer (Fully Integrated + Clickable Reactions)
-
+// index.js — Discord Chat Viewer Full Version
 const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -42,14 +41,15 @@ function formatTime(date) {
   }
 }
 
-// Escape HTML
+// Escape HTML including backticks
 function escapeHtml(s) {
   return String(s || '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;')
+    .replace(/`/g,'&#96;');
 }
 
 // Deterministic bubble color per user
@@ -67,7 +67,7 @@ function getUserBubbleColor(userId, avatarUrl) {
   return `rgb(${clamp(r)},${clamp(g)},${clamp(b)})`;
 }
 
-// Delete message endpoint
+// Delete message
 app.post('/delete', async (req, res) => {
   const messageId = req.body.messageId;
   if (!messageId) return res.status(400).send('messageId required');
@@ -111,7 +111,7 @@ app.post('/react', async (req, res) => {
   }
 });
 
-// Render message block
+// Render a single message
 async function renderMessageBlock(msg) {
   try {
     const avatar = msg.author.displayAvatarURL({ extension: 'png', size: 128 }) || '';
@@ -208,7 +208,9 @@ app.get('/', async (req, res) => {
     let messages = Array.from(fetched.values()).reverse();
     if (search) messages = messages.filter(m => (m.content || '').toLowerCase().includes(search));
 
-    const blocks = await Promise.all(messages.map(m => renderMessageBlock(m)));
+    // Safe join of message blocks
+    const blocks = await Promise.all(messages.map(async m => String(await renderMessageBlock(m))));
+
     const oldestId = messages.length > 0 ? messages[0].id : '';
 
     res.send(`
@@ -219,36 +221,20 @@ app.get('/', async (req, res) => {
 <title>Discord Chat Viewer</title>
 <meta http-equiv="refresh" content="10">
 <style>
-/* Full pixel-perfect CSS including hover previews and reactions */
-body {font-family:'Whitney','Segoe UI',sans-serif;background:#36393f;color:#dcddde;margin:0;padding:20px;}
-.light{background:#f2f3f5;color:#050505;}
-h1{margin-bottom:20px;font-weight:500;}
-#chat{display:flex;flex-direction:column;gap:8px;max-height:80vh;overflow-y:auto;padding-bottom:10px;}
-.message{display:flex;align-items:flex-start;position:relative;gap:8px;transition:transform 0.1s;}
-.message:hover{transform:scale(1.01);}
-.message.reply{margin-left:50px;position:relative;}
-.message.reply::before{content:'';position:absolute;left:-30px;top:12px;bottom:0;width:2px;background:rgba(255,255,255,0.15);border-radius:2px;}
-.avatar{width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0;margin-top:2px;}
-.bubble{padding:8px 12px;border-radius:16px;max-width:70%;background:#40444b;word-break:break-word;position:relative;box-shadow:0 1px 2px rgba(0,0,0,0.3);transition:background 0.2s;}
-.bubble:hover{background:#4f545c;}
-.meta{font-size:12px;opacity:0.7;margin-bottom:2px;display:flex;align-items:center;gap:4px;}
-.meta b{font-weight:500;}
-.inline-img{max-width:280px;border-radius:8px;margin-top:4px;display:block;cursor:zoom-in;transition:transform 0.2s;}
-.inline-img:hover{transform:scale(1.05);}
-.reactions{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;}
-.reaction{background:rgba(255,255,255,0.1);color:#fff;padding:2px 6px;border-radius:12px;font-size:11px;cursor:pointer;transition:background 0.2s;}
-.reaction:hover{background:rgba(255,255,255,0.2);}
-.delete-form{display:flex;align-items:center;margin-left:4px;opacity:0;transition:opacity 0.2s;}
-.message:hover .delete-form{opacity:1;}
-.delete-btn{background:#f04747;border:none;color:white;padding:2px 6px;border-radius:4px;font-size:11px;cursor:pointer;transition:background 0.2s;}
-.delete-btn:hover{background:#d93b3b;}
-.search-bar{margin-bottom:20px;display:flex;gap:6px;}
-input,button{font-family:'Whitney','Segoe UI',sans-serif;font-size:14px;border-radius:6px;border:none;padding:6px 8px;}
-button{background:#7289da;color:white;cursor:pointer;transition:background 0.2s;}
-button:hover{background:#5b6eae;}
-.reply-preview{display:flex;align-items:center;font-size:11px;opacity:0.6;border-left:2px solid rgba(255,255,255,0.2);padding-left:4px;margin-bottom:4px;gap:4px;color:#b9bbbe;}
-.reply-preview img{width:16px;height:16px;border-radius:50%;flex-shrink:0;}
-a:hover::after{content:attr(data-preview);position:absolute;background:#2f3136;color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;white-space:pre-wrap;max-width:300px;z-index:100;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#1e1e1e;color:white;margin:0;padding:20px;}
+h1{margin-bottom:10px;}
+#chat{display:flex;flex-direction:column;gap:12px;}
+.message{display:flex;align-items:flex-start;transition:transform 0.15s;}
+.message:hover{transform:scale(1.02);}
+.avatar{width:42px;height:42px;border-radius:50%;margin-right:10px;flex-shrink:0;}
+.bubble{padding:10px 14px;border-radius:16px;max-width:70%;font-size:14px;line-height:1.4;position:relative;word-wrap:break-word;color:white;}
+.meta{font-size:12px;margin-bottom:4px;opacity:0.85;}
+.delete-btn{margin-left:10px;background:#ff4c4c;color:white;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;}
+.inline-img{max-width:300px;margin-top:6px;border-radius:10px;}
+.reactions{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;}
+.reaction{background:#333;padding:2px 6px;border-radius:12px;cursor:pointer;font-size:12px;}
+.reply-preview{font-size:12px;opacity:0.7;margin-bottom:4px;display:flex;align-items:center;gap:4px;}
+.reply-preview img{width:20px;height:20px;border-radius:50%;}
 </style>
 </head>
 <body data-oldest="${oldestId}">
@@ -259,42 +245,22 @@ a:hover::after{content:attr(data-preview);position:absolute;background:#2f3136;c
 <input name="search" placeholder="Search messages..." value="${escapeHtml(searchRaw)}"/>
 <button type="submit">Search</button>
 </form>
-<div id="chat">${blocks.join('')}</div>
+<div id="chat">
+${blocks.join('')}
+</div>
 <script>
-let loadingOlder=false;
-let oldestId=document.body.dataset.oldest;
-const chatContainer=document.getElementById('chat');
-function smoothScrollToBottom(){chatContainer.scrollTo({top:chatContainer.scrollHeight,behavior:'smooth'});}
-async function loadOlderMessages(){if(loadingOlder||!oldestId)return;loadingOlder=true;const res=await fetch('/messages?before='+oldestId);const data=await res.json();if(data.blocks.length>0){const div=document.createElement('div');div.innerHTML=data.blocks.join('');chatContainer.prepend(div);oldestId=data.oldestId;document.body.dataset.oldest=oldestId;}loadingOlder=false;}
-chatContainer.addEventListener('scroll',()=>{if(chatContainer.scrollTop<100)loadOlderMessages();});
-let lastMessageId=chatContainer.lastElementChild?.dataset.id||null;
-async function fetchNewMessages(){if(!lastMessageId)return;const res=await fetch('/messages?after='+lastMessageId);const data=await res.json();if(data.blocks.length>0){const div=document.createElement('div');div.innerHTML=data.blocks.join('');chatContainer.appendChild(div);lastMessageId=data.latestId;smoothScrollToBottom();}}
-setInterval(fetchNewMessages,5000);
-function downloadChat(){window.location.href='/download';}
-function toggleTheme(){document.body.classList.toggle('light');}
-
-// Clickable reactions
-document.addEventListener('click', async (e) => {
-  if(e.target.classList.contains('reaction')){
-    const msgId = e.target.dataset.messageId;
-    const emoji = e.target.dataset.emoji;
-    try {
-      await fetch('/react', {
-        method:'POST',
-        headers: {'Content-Type':'application/x-www-form-urlencoded'},
-        body: `messageId=${encodeURIComponent(msgId)}&emoji=${encodeURIComponent(emoji)}`
-      });
-      // Optional: increment/decrement count visually
-    } catch(err){console.error(err);}
-  }
-});
-
-window.onload=()=>{smoothScrollToBottom();};
+function toggleTheme(){if(document.body.style.background==='white'){document.body.style.background='#1e1e1e';document.body.style.color='white';}else{document.body.style.background='white';document.body.style.color='black';}}
+function downloadChat(){const text=Array.from(document.querySelectorAll('.message .bubble .text')).map(el=>el.innerText).join('\\n');const blob=new Blob([text],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='chat.txt';a.click();URL.revokeObjectURL(a.href);}
+document.addEventListener('click',async e=>{if(e.target.classList.contains('reaction')){const messageId=e.target.dataset.messageId;const emoji=e.target.dataset.emoji;fetch('/react',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`messageId=${encodeURIComponent(messageId)}&emoji=${encodeURIComponent(emoji)}`}).then(()=>location.reload());}});
+let loading=false;window.addEventListener('scroll',async ()=>{if(loading) return;if(window.scrollY+window.innerHeight>=document.body.scrollHeight-100){loading=true;const oldest=document.querySelector('#chat .message')?.dataset.id;if(!oldest) return;const res=await fetch(`/messages?before=${oldest}`);const data=await res.json();const container=document.getElementById('chat');const div=document.createElement('div');div.innerHTML=data.blocks.join('');container.prepend(div);loading=false;}});
+window.onload=()=>{window.scrollTo(0,document.body.scrollHeight);};
 </script>
 </body>
 </html>
     `);
-  } catch (err) { res.send(`<p>Error: ${escapeHtml(err.message)}</p>`); }
+  } catch (err) {
+    res.send(`<p>Error: ${escapeHtml(err.message)}</p>`);
+  }
 });
 
 // Messages API for infinite scroll
