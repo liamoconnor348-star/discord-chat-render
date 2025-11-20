@@ -1,4 +1,4 @@
-// index.js — Discord Chat Viewer Full Version
+// index.js — Fully safe Discord Chat Viewer
 const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -16,7 +16,6 @@ if (!TOKEN || !CHANNEL_ID) {
   process.exit(1);
 }
 
-// Discord client
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -27,13 +26,21 @@ const client = new Client({
   ]
 });
 
-// Format timestamp
+// Escape any HTML or special characters in messages
+function escapeHtml(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/`/g, '&#96;');
+}
+
 function formatTime(date) {
   try {
     return new Date(date).toLocaleString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
+      weekday: 'short', month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit'
     });
   } catch {
@@ -41,30 +48,17 @@ function formatTime(date) {
   }
 }
 
-// Escape HTML including backticks
-function escapeHtml(s) {
-  return String(s || '')
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;')
-    .replace(/'/g,'&#39;')
-    .replace(/`/g,'&#96;');
-}
-
 // Deterministic bubble color per user
-function getUserBubbleColor(userId, avatarUrl) {
-  const str = userId + '|' + avatarUrl;
+function getUserBubbleColor(userId) {
   let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    hash = hash & hash;
+  for (let i = 0; i < userId.length; i++) {
+    hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+    hash &= hash;
   }
-  const r = (hash >> 16) & 0xFF;
-  const g = (hash >> 8) & 0xFF;
-  const b = hash & 0xFF;
-  const clamp = v => Math.max(60, Math.min(220, v));
-  return `rgb(${clamp(r)},${clamp(g)},${clamp(b)})`;
+  const r = Math.max(60, Math.min(220, (hash >> 16) & 0xff));
+  const g = Math.max(60, Math.min(220, (hash >> 8) & 0xff));
+  const b = Math.max(60, Math.min(220, hash & 0xff));
+  return `rgb(${r},${g},${b})`;
 }
 
 // Delete message
@@ -72,42 +66,31 @@ app.post('/delete', async (req, res) => {
   const messageId = req.body.messageId;
   if (!messageId) return res.status(400).send('messageId required');
   try {
-    const channel = await client.channels.fetch(CHANNEL_ID).catch(() => null);
-    if (!channel) return res.send('❌ Invalid CHANNEL_ID');
-    try {
-      await channel.messages.delete(messageId);
-      res.redirect('back');
-    } catch (err) {
-      res.send(`<p>Cannot delete message: ${escapeHtml(err.message)}</p>`);
-    }
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    await channel.messages.delete(messageId);
+    res.redirect('back');
   } catch (err) {
-    console.error('Delete error', err);
-    res.send(`<p>Error deleting message: ${escapeHtml(err.message)}</p>`);
+    res.send(`<p>Error deleting: ${escapeHtml(err.message)}</p>`);
   }
 });
 
-// Add/remove reaction
+// React to message
 app.post('/react', async (req, res) => {
   const { messageId, emoji } = req.body;
   if (!messageId || !emoji) return res.status(400).send('Missing messageId or emoji');
 
   try {
     const channel = await client.channels.fetch(CHANNEL_ID);
-    if (!channel) return res.status(400).send('Invalid channel');
-
     const message = await channel.messages.fetch(messageId);
-    if (!message) return res.status(404).send('Message not found');
-
     const existing = message.reactions.cache.get(emoji);
     if (existing && existing.me) {
       await existing.users.remove(client.user.id);
     } else {
       await message.react(emoji);
     }
-
     res.redirect('back');
   } catch (err) {
-    res.status(500).send(err.message);
+    res.status(500).send(escapeHtml(err.message));
   }
 });
 
@@ -115,11 +98,11 @@ app.post('/react', async (req, res) => {
 async function renderMessageBlock(msg) {
   try {
     const avatar = msg.author.displayAvatarURL({ extension: 'png', size: 128 }) || '';
-    const bubbleColor = getUserBubbleColor(msg.author.id, avatar);
+    const bubbleColor = getUserBubbleColor(msg.author.id);
     const grad = `linear-gradient(135deg, ${bubbleColor}CC, rgba(0,0,0,0.55))`;
     const authorName = escapeHtml(msg.author.username || 'Unknown');
 
-    // Highest role & emoji
+    // Role emoji
     let roleEmoji = '⬤';
     let roleColor = '#ffffff';
     try {
@@ -132,22 +115,20 @@ async function renderMessageBlock(msg) {
       }
     } catch {}
 
-    const isReply = msg.reference && msg.reference.messageId;
-    const indentPx = isReply ? 50 : 0;
-    const replyClass = isReply ? 'reply' : '';
-
+    // Reply preview
     let replyPreview = '';
-    if (isReply) {
+    if (msg.reference && msg.reference.messageId) {
       try {
         const parentMsg = await msg.channel.messages.fetch(msg.reference.messageId);
         if (parentMsg) {
-          const preview = escapeHtml(parentMsg.content || '[Embed/Attachment]');
           const parentAvatar = parentMsg.author.displayAvatarURL({ extension:'png', size:32 });
+          const preview = escapeHtml(parentMsg.content || '[Embed/Attachment]');
           replyPreview = `<div class="reply-preview"><img src="${parentAvatar}" />↪ ${preview}</div>`;
         }
       } catch {}
     }
 
+    // Attachments
     let attachmentsHtml = '';
     if (msg.attachments && msg.attachments.size > 0) {
       msg.attachments.forEach(att => {
@@ -155,7 +136,7 @@ async function renderMessageBlock(msg) {
         if (contentType.startsWith && contentType.startsWith('image')) {
           attachmentsHtml += `<img class="inline-img" src="${att.url}" title="${escapeHtml(att.name || '')}" />`;
         } else {
-          attachmentsHtml += `<div><a href="${att.url}" target="_blank" data-preview="File: ${escapeHtml(att.name || '')}">${escapeHtml(att.name || 'Attachment')}</a></div>`;
+          attachmentsHtml += `<div><a href="${att.url}" target="_blank">${escapeHtml(att.name || 'Attachment')}</a></div>`;
         }
       });
     }
@@ -172,46 +153,43 @@ async function renderMessageBlock(msg) {
 
     const contentEscaped = escapeHtml(msg.content || '');
 
-    return `
-      <div class="message ${replyClass}" data-id="${msg.id}" style="margin-left:${indentPx}px">
-        <img class="avatar" src="${avatar}" alt="avatar"/>
-        <div>
-          <div class="bubble" style="background:${grad}">
-            ${replyPreview}
-            <div class="meta">
-              <b style="color:${roleColor}">${authorName}</b> ${roleEmoji} • ${formatTime(msg.createdAt)}
-            </div>
-            <div class="text">${contentEscaped}</div>
-            ${attachmentsHtml}
-            ${reactionsHtml}
+    const indentPx = msg.reference && msg.reference.messageId ? 50 : 0;
+
+    return `<div class="message" data-id="${msg.id}" style="margin-left:${indentPx}px">
+      <img class="avatar" src="${avatar}" />
+      <div>
+        <div class="bubble" style="background:${grad}">
+          ${replyPreview}
+          <div class="meta">
+            <b style="color:${roleColor}">${authorName}</b> ${roleEmoji} • ${formatTime(msg.createdAt)}
           </div>
+          <div class="text">${contentEscaped}</div>
+          ${attachmentsHtml}
+          ${reactionsHtml}
         </div>
-        <form method="POST" action="/delete" class="delete-form">
-          <input type="hidden" name="messageId" value="${msg.id}" />
-          <button class="delete-btn" type="submit">Delete</button>
-        </form>
       </div>
-    `;
-  } catch { return ''; }
+      <form method="POST" action="/delete">
+        <input type="hidden" name="messageId" value="${msg.id}" />
+        <button class="delete-btn" type="submit">Delete</button>
+      </form>
+    </div>`;
+  } catch {
+    return '';
+  }
 }
 
 // Main page
 app.get('/', async (req, res) => {
   try {
-    const channel = await client.channels.fetch(CHANNEL_ID).catch(()=>null);
-    if (!channel) return res.send("❌ Invalid CHANNEL_ID");
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    let messages = await channel.messages.fetch({ limit: 50 });
+    messages = Array.from(messages.values()).reverse();
 
     const searchRaw = req.query.search || '';
-    const search = String(searchRaw).trim().toLowerCase();
-
-    const fetched = await channel.messages.fetch({ limit: 50 }).catch(()=>[]);
-    let messages = Array.from(fetched.values()).reverse();
+    const search = String(searchRaw).toLowerCase();
     if (search) messages = messages.filter(m => (m.content || '').toLowerCase().includes(search));
 
-    // Safe join of message blocks
-    const blocks = await Promise.all(messages.map(async m => String(await renderMessageBlock(m))));
-
-    const oldestId = messages.length > 0 ? messages[0].id : '';
+    const blocks = await Promise.all(messages.map(m => renderMessageBlock(m)));
 
     res.send(`
 <!DOCTYPE html>
@@ -237,7 +215,7 @@ h1{margin-bottom:10px;}
 .reply-preview img{width:20px;height:20px;border-radius:50%;}
 </style>
 </head>
-<body data-oldest="${oldestId}">
+<body>
 <h1>Discord Chat Viewer</h1>
 <button onclick="downloadChat()">Download TXT</button>
 <button onclick="toggleTheme()">Toggle Theme</button>
@@ -251,9 +229,8 @@ ${blocks.join('')}
 <script>
 function toggleTheme(){if(document.body.style.background==='white'){document.body.style.background='#1e1e1e';document.body.style.color='white';}else{document.body.style.background='white';document.body.style.color='black';}}
 function downloadChat(){const text=Array.from(document.querySelectorAll('.message .bubble .text')).map(el=>el.innerText).join('\\n');const blob=new Blob([text],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='chat.txt';a.click();URL.revokeObjectURL(a.href);}
-document.addEventListener('click',async e=>{if(e.target.classList.contains('reaction')){const messageId=e.target.dataset.messageId;const emoji=e.target.dataset.emoji;fetch('/react',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`messageId=${encodeURIComponent(messageId)}&emoji=${encodeURIComponent(emoji)}`}).then(()=>location.reload());}});
-let loading=false;window.addEventListener('scroll',async ()=>{if(loading) return;if(window.scrollY+window.innerHeight>=document.body.scrollHeight-100){loading=true;const oldest=document.querySelector('#chat .message')?.dataset.id;if(!oldest) return;const res=await fetch(`/messages?before=${oldest}`);const data=await res.json();const container=document.getElementById('chat');const div=document.createElement('div');div.innerHTML=data.blocks.join('');container.prepend(div);loading=false;}});
-window.onload=()=>{window.scrollTo(0,document.body.scrollHeight);};
+document.addEventListener('click',async e=>{if(e.target.classList.contains('reaction')){const messageId=e.target.dataset.messageId;const emoji=e.target.dataset.emoji;fetch('/react',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'messageId='+encodeURIComponent(messageId)+'&emoji='+encodeURIComponent(emoji)}).then(()=>location.reload());}});
+window.onload=()=>{window.scrollTo(0,document.body.scrollHeight);}
 </script>
 </body>
 </html>
@@ -263,55 +240,7 @@ window.onload=()=>{window.scrollTo(0,document.body.scrollHeight);};
   }
 });
 
-// Messages API for infinite scroll
-app.get('/messages', async (req, res) => {
-  const beforeId = req.query.before;
-  const afterId = req.query.after;
-  try {
-    const channel = await client.channels.fetch(CHANNEL_ID);
-    if (!channel) return res.status(400).send('Invalid channel');
-
-    const options = { limit: 50 };
-    if (beforeId) options.before = beforeId;
-    if (afterId) options.after = afterId;
-
-    const fetched = await channel.messages.fetch(options);
-    const messages = Array.from(fetched.values()).reverse();
-    const blocks = await Promise.all(messages.map(m => renderMessageBlock(m)));
-
-    const newestId = messages.length > 0 ? messages[messages.length-1].id : null;
-    const oldestId = messages.length > 0 ? messages[0].id : null;
-
-    res.json({ blocks, newestId, oldestId, latestId: newestId });
-  } catch (err) { res.status(500).send({ error: err.message }); }
-});
-
-// Download chat TXT
-app.get('/download', async (req,res) => {
-  try {
-    const channel = await client.channels.fetch(CHANNEL_ID);
-    if (!channel) return res.status(400).send('Invalid channel');
-
-    let allMessages=[], lastId;
-    while(true){
-      const opts={limit:100};
-      if(lastId)opts.before=lastId;
-      const fetched=await channel.messages.fetch(opts);
-      if(fetched.size===0)break;
-      allMessages.push(...fetched.values());
-      lastId=fetched.last().id;
-    }
-    allMessages.reverse();
-    const txt = allMessages.map(m=>`[${formatTime(m.createdAt)}] ${m.author.username}: ${m.content.replace(/\n/g,' ')}`).join('\n');
-    res.setHeader('Content-Disposition','attachment; filename="chat.txt"');
-    res.setHeader('Content-Type','text/plain');
-    res.send(txt);
-  } catch(err){res.status(500).send('Error: '+err.message);}
-});
-
 // Start server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT,()=>console.log(`Server running on port ${PORT}`));
-
-// Discord login
+app.listen(PORT,()=>console.log('Server running on port',PORT));
 client.login(TOKEN).catch(err=>{console.error('Discord login failed:',err); process.exit(1);});
